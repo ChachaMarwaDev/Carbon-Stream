@@ -1,17 +1,42 @@
 import wbdata
-import json
-# source = wbdata.get_sources()
+import psycopg2
+from psycopg2.extras import execute_values
 
-# indicators = wbdata.get_indicators(source=2)
-# with open("indicators.json", "w") as f:
-#     json.dump(indicators, f, indent=2)
+# Database connection
+DB_CONFIG = {
+    "host": "myimage", 
+    "database": "carbon_stream", 
+    "user": "root", 
+    "password": "root" }
 
-countries = wbdata.get_countries()
-with open("countries.json", "w") as f:
-    json.dump(countries, f, indent=2)
+# Fetch data
+all_data = wbdata.get_data("EN.GHG.ALL.LU.MT.CE.AR5", country="USA")
 
-indicators = {    
-    'EN.ATM.CO2E.KT': 'co2_emissions_kt',      # Total emissions
-    'EN.ATM.CO2E.PC': 'co2_per_capita',        # Rate per person (most useful for "rate")
-    'EN.ATM.CO2E.PP.GD': 'co2_per_gdp'}
-data = wbdata.get_data(indicators, country="USA")
+# Connect and create table
+conn = psycopg2.connect(**DB_CONFIG)
+cursor = conn.cursor()
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ghg_emissions (
+        id SERIAL PRIMARY KEY,
+        year INTEGER,
+        value DECIMAL
+    )
+""")
+
+# Process in chunks
+chunk_size = 10
+for i in range(0, len(all_data), chunk_size):
+    chunk = all_data[i:i + chunk_size]
+    
+    # Prepare records
+    records = [(int(r['date']), float(r['value'])) for r in chunk if r['value']]
+    
+    # Insert chunk
+    execute_values(cursor, "INSERT INTO ghg_emissions (year, value) VALUES %s", records)
+    conn.commit()
+    print(f"Uploaded chunk {i//chunk_size + 1}")
+
+# Cleanup
+cursor.close()
+conn.close()
+print("Done!")
