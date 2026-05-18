@@ -1,8 +1,43 @@
-
 services:
-  web:
-    image: nginx:latest
+  carbon-stream:
+    image: postgres:18
+    container_name: myimage
     ports:
-      - "80:80"
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=root
+      - POSTGRES_DB=carbon_stream
     volumes:
-      - ./:/usr/share/nginx/html
+      - carbon_stream_data:/var/lib/postgresql
+    stdin_open: true # -i flag
+    tty: true # -t flag
+
+  app:                          # ← your Python app
+    build: .                    # ← uses your Dockerfile
+    container_name: app
+    volumes:
+      - .:/workspace            # ← mounts your code from host
+    depends_on:
+      - carbon-stream
+    stdin_open: true
+    tty: true
+
+  pgadmin:
+      image: dpage/pgadmin4:latest
+      container_name: pgadmin
+      environment:
+        PGADMIN_DEFAULT_EMAIL: admin@admin.com
+        PGADMIN_DEFAULT_PASSWORD: admin
+        PGADMIN_LISTEN_PORT: 5050
+      ports:
+        - "5050:5050"
+      volumes:
+        - pgadmin_data:/var/lib/pgadmin
+      depends_on:
+        - carbon-stream
+
+
+volumes:
+    carbon_stream_data:
+    pgadmin_data:
