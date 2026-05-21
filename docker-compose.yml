@@ -18,6 +18,7 @@ services:
     container_name: app
     volumes:
       - .:/workspace            # ← mounts your code from host
+      - ./.cdsapirc:/root/.cdsapirc  # ← mounts .cdsapirc for authentication
     depends_on:
       - carbon-stream
     stdin_open: true
