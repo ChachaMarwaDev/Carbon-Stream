@@ -11,8 +11,8 @@ request = {
                "07","08","09","10","11","12"],
     "time": ["00:00"],
     "data_format": "netcdf",
-    "area": [36, 68, 8, 98],
+    "area": [55, 6, 47, 15],
 }
-target = "in_era5_monthly.nc"
+target = "de_era5_monthly.nc"
 
 client.retrieve(dataset, request, target)
