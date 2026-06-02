@@ -13,7 +13,7 @@ Tables created (or replaced) in schema: raw
 import wbdata
 import pandas as pd
 import psycopg
-from datetime import date
+from datetime import datetime
 
 # ─────────────────────────────────────────────
 # CONFIG
@@ -22,7 +22,10 @@ from datetime import date
 DB_URL = "postgresql://root:root@carbon-stream:5432/carbon_stream"
 
 # Year range to pull — World Bank data goes up to ~2 years behind current year
-DATE_RANGE = ("1990", "2025")
+DATE_RANGE = (
+    datetime(1990, 1, 1),
+    datetime(2025, 12, 31)
+)
 
 # ─────────────────────────────────────────────
 # INDICATORS
@@ -57,7 +60,7 @@ def fetch_indicators(indicators: dict, date_range: tuple) -> pd.DataFrame:
 
     df = wbdata.get_dataframe(
         indicators,
-        date=date_range,
+        data_date=DATE_RANGE,
         source=2
     )
 
