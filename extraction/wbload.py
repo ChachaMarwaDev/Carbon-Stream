@@ -58,6 +58,7 @@ def fetch_indicators(indicators: dict, date_range: tuple) -> pd.DataFrame:
     df = wbdata.get_dataframe(
         indicators,
         date=date_range,
+        source=2
     )
 
     # wbdata returns a MultiIndex: (country, date)
