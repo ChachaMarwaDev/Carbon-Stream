@@ -12,7 +12,7 @@ ENV PATH="/workspace/.venv/bin:$PATH"
 COPY pyproject.toml uv.lock .python-version ./
 
 # Install dependencies
-RUN uv sync --locked
+RUN uv sync
 
 # Copy ENTIRE extraction directory
 COPY extraction/ ./extraction/
