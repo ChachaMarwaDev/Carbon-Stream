@@ -219,3 +219,7 @@ __marimo__/
 
 main.py
 test.txt
+
+/landing/
+.cdsapirc
+commands.txt
