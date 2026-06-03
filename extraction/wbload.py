@@ -87,7 +87,7 @@ def add_country_codes(df: pd.DataFrame) -> pd.DataFrame:
     Adds iso2_code and iso3_code columns by joining against wbdata's country list.
     """
     print("  Fetching country metadata for ISO codes...")
-    countries = wbdata.get_country(source=2)  # source=2 = World Development Indicators
+    countries = wbdata.get_country()  # source=2 = World Development Indicators
 
     # Build a lookup: country name → codes
     code_map = {
