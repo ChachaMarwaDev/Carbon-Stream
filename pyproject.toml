@@ -13,4 +13,5 @@ dependencies = [
     "cdsapi>=0.7.7",
     "xarray>=2024.7.0",
     "netcdf4>=1.7.2",
+    "dbt>=1.0.0.40.17",
 ]
