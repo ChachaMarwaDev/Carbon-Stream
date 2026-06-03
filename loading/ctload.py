@@ -4,16 +4,10 @@ extraction/ctload.py
 Loads Climate Trace CSVs and Global Carbon Project CSV into Postgres raw schema.
 Run from inside the Docker app container:
     uv run python extraction/ctload.py
-
-Strategy:
-- Uses chunked CSV reading (never loads a full file into RAM)
-- Uses Postgres COPY for fast bulk inserts (10-50x faster than executemany)
-- Skips files over a configurable size limit
 """
 
 import sys
 import io
-import csv
 import pandas as pd
 import psycopg
 from pathlib import Path
@@ -30,18 +24,16 @@ LANDING  = Path("/workspace/landing")
 GCP_PATH = LANDING / "global_carbon_project" / "export_emissions.csv"
 CT_PATH  = LANDING / "climate_trace"
 
-# Skip any single CSV file larger than this (bytes). 500 MB default.
-# The 12 GB enteric-fermentation sources file will be skipped automatically.
+# Skip any single CSV file larger than this (bytes)
 MAX_FILE_BYTES = 500 * 1024 * 1024
 
-# Rows read from CSV at a time — keeps RAM flat regardless of file size
-CHUNK_SIZE = 50_000
+# Rows read and COPYed at a time — commit after every chunk to avoid OOM
+CHUNK_SIZE = 20_000
 
 # ─────────────────────────────────────────────
 # CLIMATE TRACE FILE CLASSIFICATION
 # ─────────────────────────────────────────────
 
-# Longer suffixes MUST come first so confidence/ownership aren't misclassified as sources
 FILE_TYPES = {
     "emissions_sources_confidence": "confidence",
     "emissions_sources_ownership":  "ownership",
@@ -68,6 +60,7 @@ def _detect_file_type(stem: str) -> Optional[str]:
 # COLUMN TYPE HELPERS
 # ─────────────────────────────────────────────
 
+# Global type overrides — applied to all tables
 GLOBAL_TYPE_OVERRIDES = {
     "year":               "INTEGER",
     "start_time":         "TIMESTAMP",
@@ -79,10 +72,16 @@ GLOBAL_TYPE_OVERRIDES = {
     "lon":                "DOUBLE PRECISION",
     "activity":           "DOUBLE PRECISION",
     "emissions_factor":   "DOUBLE PRECISION",
-    "capacity":           "DOUBLE PRECISION",
     "capacity_factor":    "DOUBLE PRECISION",
     "source_id":          "BIGINT",
     "emissions_mtco2":    "DOUBLE PRECISION",
+}
+
+# In confidence files, 'capacity' holds text ratings like "high"/"low"/"very high"
+# so we must NOT cast it to DOUBLE PRECISION for those tables
+CONFIDENCE_TYPE_OVERRIDES = {
+    **GLOBAL_TYPE_OVERRIDES,
+    "capacity": "TEXT",   # override: confidence rating, not a number
 }
 
 
@@ -90,9 +89,9 @@ def _sanitise_col(c: str) -> str:
     return c.strip().lower().replace(" ", "_").replace("-", "_").replace("*", "_")
 
 
-def _infer_pg_type(col: str, series: pd.Series) -> str:
-    if col in GLOBAL_TYPE_OVERRIDES:
-        return GLOBAL_TYPE_OVERRIDES[col]
+def _infer_pg_type(col: str, series: pd.Series, overrides: dict) -> str:
+    if col in overrides:
+        return overrides[col]
     dtype = series.dtype
     if pd.api.types.is_integer_dtype(dtype):
         return "BIGINT"
@@ -104,11 +103,10 @@ def _infer_pg_type(col: str, series: pd.Series) -> str:
 
 
 # ─────────────────────────────────────────────
-# POSTGRES COPY LOADER
+# POSTGRES HELPERS
 # ─────────────────────────────────────────────
 
 def _create_table(conn: psycopg.Connection, schema_table: str, col_defs: list):
-    """Drop and recreate a table."""
     ddl = f"""
         CREATE SCHEMA IF NOT EXISTS raw;
         DROP TABLE IF EXISTS {schema_table};
@@ -120,19 +118,16 @@ def _create_table(conn: psycopg.Connection, schema_table: str, col_defs: list):
 
 
 def _copy_chunk(conn: psycopg.Connection, schema_table: str, cols: list, df: pd.DataFrame):
-    """
-    Stream one chunk into Postgres using COPY FROM STDIN (TEXT format).
-    This is far faster than executemany and uses minimal memory.
-    """
+    """Stream one chunk into Postgres via COPY, committing immediately after."""
     quoted_cols = ", ".join(f'"{c}"' for c in cols)
     copy_sql = f"COPY {schema_table} ({quoted_cols}) FROM STDIN (FORMAT TEXT, NULL '\\N')"
 
     buf = io.StringIO()
-    # Write TSV — tab-separated, NaN → \N (Postgres NULL marker)
     df_clean = df.where(pd.notnull(df), None)
     for row in df_clean.itertuples(index=False):
         line = "\t".join(
-            "\\N" if v is None else str(v).replace("\\", "\\\\").replace("\t", " ").replace("\n", " ")
+            "\\N" if v is None
+            else str(v).replace("\\", "\\\\").replace("\t", " ").replace("\n", " ")
             for v in row
         )
         buf.write(line + "\n")
@@ -142,52 +137,58 @@ def _copy_chunk(conn: psycopg.Connection, schema_table: str, cols: list, df: pd.
         with cur.copy(copy_sql) as copy:
             copy.write(buf.read())
 
+    # Commit after every chunk — prevents Postgres OOM-killing the connection
+    conn.commit()
+
+
+# ─────────────────────────────────────────────
+# FILE LOADER
+# ─────────────────────────────────────────────
 
 def _load_file_chunked(
     conn: psycopg.Connection,
     csv_path: Path,
-    table_name: str,
-    extra_col: Optional[tuple] = None,   # (col_name, value) to inject
-    table_created: bool = False,
+    schema_table: str,
+    type_overrides: dict,
+    table_exists: bool,
 ) -> bool:
     """
-    Read a CSV in chunks and COPY each chunk to Postgres.
-    Creates the table on the first chunk (schema inferred from sample).
-    Returns True if anything was loaded.
+    Stream a CSV in chunks into schema_table using COPY.
+    - If table_exists=False, creates the table from the first chunk's schema.
+    - If table_exists=True, appends directly (no DROP).
+    Returns True on success, False on failure.
     """
-    schema_table = f"raw.{table_name}"
     cols = None
     rows_loaded = 0
 
     try:
-        for chunk in pd.read_csv(csv_path, chunksize=CHUNK_SIZE, low_memory=False):
-            # Sanitise column names
+        for i, chunk in enumerate(pd.read_csv(csv_path, chunksize=CHUNK_SIZE, low_memory=False)):
             chunk.columns = [_sanitise_col(c) for c in chunk.columns]
+            chunk["_source_file"] = csv_path.name
 
-            # Inject extra column (e.g. _source_file)
-            if extra_col:
-                chunk[extra_col[0]] = extra_col[1]
-
-            if not table_created:
+            if i == 0:
                 cols = list(chunk.columns)
-                col_defs = []
-                for col in cols:
-                    pg_type = _infer_pg_type(col, chunk[col])
-                    col_defs.append(f'"{col}" {pg_type}')
-                print(f"    Creating {schema_table} ({len(cols)} columns)...")
-                _create_table(conn, schema_table, col_defs)
-                table_created = True
+
+                if not table_exists:
+                    col_defs = [
+                        f'"{col}" {_infer_pg_type(col, chunk[col], type_overrides)}'
+                        for col in cols
+                    ]
+                    print(f"    Creating {schema_table} ({len(cols)} columns)...")
+                    _create_table(conn, schema_table, col_defs)
 
             _copy_chunk(conn, schema_table, cols, chunk[cols])
             rows_loaded += len(chunk)
 
-            if rows_loaded % 500_000 == 0:
-                print(f"    ... {rows_loaded:,} rows loaded so far")
+            if rows_loaded % 200_000 == 0:
+                print(f"    ... {rows_loaded:,} rows so far")
 
-        conn.commit()
     except Exception as e:
-        print(f"    [ERROR] Failed loading {csv_path.name}: {e}")
-        conn.rollback()
+        print(f"    [ERROR] {csv_path.name}: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         return False
 
     print(f"    ✓ {rows_loaded:,} rows → {schema_table}")
@@ -199,11 +200,6 @@ def _load_file_chunked(
 # ─────────────────────────────────────────────
 
 def load_gcp(conn: psycopg.Connection):
-    """
-    GCP CSV is wide (countries as columns). We melt it to long format:
-        year | country | emissions_mtco2
-    GCP file is small enough to load fully into RAM.
-    """
     print("\n[GCP] Reading Global Carbon Project CSV...")
     df = pd.read_csv(GCP_PATH, skiprows=1, header=0)
     df = df.rename(columns={df.columns[0]: "year"})
@@ -213,15 +209,13 @@ def load_gcp(conn: psycopg.Connection):
     df = df.dropna(subset=["emissions_mtco2"])
     df["emissions_mtco2"] = pd.to_numeric(df["emissions_mtco2"], errors="coerce")
     df = df.dropna(subset=["emissions_mtco2"])
-
     print(f"  → {len(df):,} rows")
 
     schema_table = "raw.gcp_emissions"
     cols = list(df.columns)
-    col_defs = [f'"{c}" {_infer_pg_type(c, df[c])}' for c in cols]
+    col_defs = [f'"{c}" {_infer_pg_type(c, df[c], GLOBAL_TYPE_OVERRIDES)}' for c in cols]
     _create_table(conn, schema_table, col_defs)
     _copy_chunk(conn, schema_table, cols, df)
-    conn.commit()
     print(f"  ✓ Done → {schema_table}")
 
 
@@ -230,11 +224,6 @@ def load_gcp(conn: psycopg.Connection):
 # ─────────────────────────────────────────────
 
 def load_climate_trace(conn: psycopg.Connection):
-    """
-    For each sector, group CSVs by type (country/sources/confidence/ownership).
-    Files over MAX_FILE_BYTES are skipped with a warning.
-    Each group is streamed chunk-by-chunk into one merged Postgres table.
-    """
     for sector in SECTORS:
         sector_path = CT_PATH / sector
         if not sector_path.exists():
@@ -243,7 +232,6 @@ def load_climate_trace(conn: psycopg.Connection):
 
         print(f"\n[CT] Sector: {sector}")
 
-        # Group files by type
         grouped: dict[str, list[Path]] = {label: [] for label in FILE_TYPES.values()}
         for csv_file in sorted(sector_path.glob("*.csv")):
             ftype = _detect_file_type(csv_file.stem)
@@ -252,30 +240,36 @@ def load_climate_trace(conn: psycopg.Connection):
             else:
                 print(f"  [SKIP] Unknown pattern: {csv_file.name}")
 
-        # Load each group
         for ftype, files in grouped.items():
             if not files:
                 continue
 
-            table_name = f"ct_{sector}_{ftype}"
-            print(f"\n  [{ftype.upper()}] → raw.{table_name}")
+            schema_table = f"raw.ct_{sector}_{ftype}"
+            # Confidence files need TEXT for the 'capacity' column
+            overrides = CONFIDENCE_TYPE_OVERRIDES if ftype == "confidence" else GLOBAL_TYPE_OVERRIDES
 
-            table_created = False
+            print(f"\n  [{ftype.upper()}] → {schema_table}")
+
+            table_exists = False
             for f in files:
                 size_mb = f.stat().st_size / (1024 * 1024)
 
                 if f.stat().st_size > MAX_FILE_BYTES:
-                    print(f"    [SKIP] {f.name} ({size_mb:,.0f} MB) — exceeds {MAX_FILE_BYTES // (1024*1024)} MB limit")
+                    print(f"    [SKIP] {f.name} ({size_mb:,.0f} MB) — exceeds limit")
                     continue
 
-                print(f"    Loading {f.name} ({size_mb:,.1f} MB)...")
-                table_created = _load_file_chunked(
+                print(f"    Loading {f.name} ({size_mb:.1f} MB)...")
+                success = _load_file_chunked(
                     conn,
                     f,
-                    table_name,
-                    extra_col=("_source_file", f.name),
-                    table_created=table_created,
+                    schema_table,
+                    type_overrides=overrides,
+                    table_exists=table_exists,
                 )
+                # Only mark table_exists=True after a successful load
+                # This prevents subsequent files appending to a half-created table
+                if success:
+                    table_exists = True
 
 
 # ─────────────────────────────────────────────
@@ -292,9 +286,8 @@ def main():
         load_gcp(conn)
         load_climate_trace(conn)
 
-    print("\n✅ Extraction complete. Verify with:")
-    print("   \\dt raw.*")
-    print("   SELECT schemaname, tablename, n_live_tup FROM pg_stat_user_tables WHERE schemaname='raw';")
+    print("\n✅ Extraction complete.")
+    print("   Verify: SELECT tablename, n_live_tup FROM pg_stat_user_tables WHERE schemaname='raw' ORDER BY tablename;")
 
 
 if __name__ == "__main__":
