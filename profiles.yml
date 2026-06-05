@@ -1,0 +1,12 @@
+carbon_stream:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: carbon-stream      # Docker service name
+      port: 5432
+      user: root
+      password: root
+      dbname: carbon_stream
+      schema: public            # change this to your preferred schema
+      threads: 4

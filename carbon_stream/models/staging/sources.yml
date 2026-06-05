@@ -1,0 +1,24 @@
+# models/staging/sources.yml
+version: 2
+
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: ct_agriculture_country
+      - name: ct_agriculture_ownership
+      - name: ct_buildings_country
+      - name: ct_power_confidence
+      - name: ct_power_country
+      - name: ct_power_ownership
+      - name: ct_power_sources
+      - name: ct_transportation_confidence
+      - name: ct_transportation_country
+      - name: ct_transportation_ownership
+      - name: ct_transportation_sources
+      - name: ct_waste_confidence
+      - name: ct_waste_country
+      - name: ct_waste_sources
+      - name: gcp_emissions
+      - name: wb_context
+      - name: wb_emissions
