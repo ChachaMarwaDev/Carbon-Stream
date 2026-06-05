@@ -12,7 +12,10 @@ ENV PATH="/workspace/.venv/bin:$PATH"
 COPY pyproject.toml uv.lock .python-version ./
 
 # Install dependencies
+RUN apt-get update && apt-get install -y git
+RUN uv pip install dbt-postgres --system
 RUN uv sync
+
 
 # Copy ENTIRE extraction directory
 COPY extraction/ ./extraction/

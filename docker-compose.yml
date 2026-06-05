@@ -19,6 +19,7 @@ services:
     volumes:
       - .:/workspace            # ← mounts your code from host
       - ./.cdsapirc:/root/.cdsapirc  # ← mounts .cdsapirc for authentication
+      - ./profiles.yml:/root/.dbt/profiles.yml  # ← mounts profiles.yml for dbt
     depends_on:
       - carbon-stream
     stdin_open: true
