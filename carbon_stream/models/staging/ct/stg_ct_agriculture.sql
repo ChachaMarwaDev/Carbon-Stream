@@ -6,26 +6,46 @@ with country as (
 ownership as (
     select * from
         {{ source('raw', 'ct_agriculture_ownership') }}
+),
+
+ownership_agg as (
+    select
+        iso3_country,
+        source_subsector,
+        count(distinct source_name)         as facility_count,
+        count(distinct parent_name)         as owner_count,
+        avg(overall_share_percent)          as avg_ownership_share
+
+    from ownership
+    where iso3_country is not null
+    group by iso3_country, source_subsector
+),
+
+
+final as (
+    select
+        c.iso3_country                          as iso3,
+        c.sector,
+        c.subsector,
+        date_part('year', c.start_time)         as emission_year,
+        c.gas,
+        c.emissions_quantity                    as emission_tonnes,
+
+        -- ownership context at country level
+        o.facility_count,
+        o.owner_count,
+        o.avg_ownership_share
+
+    from country c
+    left join ownership_agg o
+        on c.iso3_country = o.iso3_country
+        and c.subsector = o.source_subsector
+
+    where c.iso3_country is not null
+      and c.emissions_quantity is not null
 )
 
--- "iso3_country"	"sector"	"subsector"	"start_time"	"end_time"	"gas"	"emissions_quantity"	"emissions_quantity_units"	"temporal_granularity"	"created_date"	"modified_date"	"_source_file"
+select * from final
 
-select
-    iso3_country,
-    sector,
-    subsector,
-    start_time,
-    end_time,
-    gas,
-    emissions_quantity,
-    emissions_quantity_units,
-    temporal_granularity,
-    created_date,
-    modified_date,
-    _source_file
-
-
-
--- "parent_name"	"parent_entity_id"	"parent_entity_type"	"parent_lei"	"parent_permid"	"parent_registration_country"	"parent_headquarter_country"	"overall_share_percent"	"ownership_path"	"ownership_path_datasource_ids"	"immediate_source_owner"	"immediate_source_owner_entity_id"	"source_operator"	"source_operator_id"	"percentage_of_operation"	"source_id"	"source_name"	"source_sector"	"source_subsector"	"iso3_country"	"_source_file"
 
 
