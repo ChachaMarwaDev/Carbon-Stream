@@ -69,8 +69,8 @@ final as (
         waste.facility_count                            as waste_facility_count,
 
         -- buildings
-        buildings.emission_tonnes                       as buildings_emission_tonnes,
-        buildings.facility_count                        as buildings_facility_count
+        buildings.emission_tonnes                       as buildings_emission_tonnes
+        -- buildings.facility_count                        as buildings_facility_count
 
     from gcp
     left join wb_context

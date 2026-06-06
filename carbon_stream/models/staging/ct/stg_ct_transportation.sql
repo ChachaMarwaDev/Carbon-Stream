@@ -28,7 +28,7 @@ sources_with_ownership as (
         s.capacity                          as flight_capacity,
 
         -- ownership (mostly NaN for transportation but still useful)
-        o.source_operator,
+        o.source_operator_id,
         o.parent_name,
         o.parent_entity_type,
         o.overall_share_percent,
@@ -45,8 +45,8 @@ sources_agg as (
         emission_year,
         gas,
         count(distinct source_id)           as facility_count,
-        count(distinct source_operator)     as operator_count,
-        sum(emission_tonnes)                as sources_emission_tonnes
+        count(distinct source_name)         as operator_count,
+        sum(emission_tonnes)             as sources_emission_tonnes
 
     from sources_with_ownership
     where iso3_country is not null

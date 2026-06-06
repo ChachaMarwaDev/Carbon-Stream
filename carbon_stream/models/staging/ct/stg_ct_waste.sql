@@ -13,7 +13,7 @@ sources_agg as (
         gas,
         date_part('year', start_time)       as emission_year,
         count(distinct source_id)           as facility_count,
-        sum(emissions_quantity)             as sources_emission_tonnes
+        sum(capacity)                       as sources_emission_tonnes
 
     from sources
     where iso3_country is not null
