@@ -1,0 +1,9 @@
+{
+  "dbt.profilesDir": "${workspaceFolder}/carbon_stream",
+  "dbt.targetName": "local",
+  "dbt.useDbtFusion": false,
+  "liveServer.settings.multiRootWorkspaceName": "Carbon-Stream",
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/dbt-labs/dbt-jsonschema/main/schemas/latest/dbt_project-latest.json": "file:///c%3A/dev/Carbon-Stream/carbon_stream/dbt_project.yml"
+  }
+}
