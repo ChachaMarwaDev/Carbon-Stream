@@ -3,10 +3,20 @@ carbon_stream:
   outputs:
     dev:
       type: postgres
-      host: carbon-stream      # Docker service name
+      host: carbon-stream   # used inside Docker
       port: 5432
       user: root
       password: root
       dbname: carbon_stream
-      schema: public            # change this to your preferred schema
+      schema: public
+      threads: 4
+
+    local:
+      type: postgres
+      host: localhost        # used by VS Code extension
+      port: 5432
+      user: root
+      password: root
+      dbname: carbon_stream
+      schema: public
       threads: 4
