@@ -16,6 +16,8 @@ services:
   app:                          # ← your Python app
     build: .                    # ← uses your Dockerfile
     container_name: app
+    ports:
+      - "8000:8000"              # ← expose app port
     volumes:
       - .:/workspace            # ← mounts your code from host
       - ./.cdsapirc:/root/.cdsapirc  # ← mounts .cdsapirc for authentication
