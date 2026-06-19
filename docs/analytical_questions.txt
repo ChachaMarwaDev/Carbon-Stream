@@ -1,0 +1,56 @@
+Tier 1 — Foundational (basic SQL: SELECT, WHERE, GROUP BY, ORDER BY)
+
+What are the top 10 countries by total_emissions_mtco2 in the most recent emission_year?
+Which countries have the highest co2_per_capita? Does this ranking change a lot vs. raw total_emissions_mtco2?
+List all countries in income_level = 'Low income' sorted by renewable_pct descending.
+What's the average gdp_usd and population per region_name?
+Which country has the highest power_facility_count but the lowest renewable_pct? (early hint of "high capacity, low clean energy" risk)
+Find all rows where total_emissions_mtco2 is NULL or 0 — these are your data quality flags.
+
+Tier 2 — Trend Analysis (requires emission_year as a time dimension)
+
+For any one country, has total_emissions_mtco2 trended up, down, or flat over the available years?
+Has renewable_pct improved over time for high-income vs. low-income countries — and is the gap closing or widening?
+Which countries show the steepest year-over-year increase in co2_per_capita?
+Does power_emission_tonnes decline as renewable_pct increases over time within the same country? (within-country trend, not cross-country comparison — this avoids comparing apples to oranges)
+Plot gdp_usd vs total_emissions_mtco2 over time for one country — does economic growth always come with emissions growth, or do you see any "decoupling" years?
+
+Tier 3 — Comparative / Benchmarking
+
+Group countries into income tiers and compare average co2_per_capita — does wealth correlate with higher per-person emissions?
+Within region_name, which country is the regional outlier in renewable_pct (way above or below its neighbors)?
+Compare transportation_emission_tonnes vs power_emission_tonnes as a share of total_emissions_mtco2 — which sector dominates in different regions?
+Are agriculture-heavy emission profiles (agriculture_emission_tonnes as % of total) more common in certain income levels?
+
+Tier 4 — Per-Capita & Equity Lens
+
+Rank countries by emissions per unit of GDP (total_emissions_mtco2 / gdp_usd) — this measures "carbon efficiency" of an economy, different from per-capita.
+Which countries have low co2_per_capita but high population — meaning their total impact matters even though individual footprint looks small?
+Is there a relationship between power_owner_count (possibly indicating energy market structure/decentralization) and renewable_pct?
+
+Tier 5 — Sector Composition
+
+For each country, compute each sector's % share of total_emissions_mtco2 (agriculture, power, transportation, buildings, waste) — build a stacked bar chart of sector mix.
+Which countries are "power-dominant" emitters vs. "agriculture-dominant" vs. "transport-dominant"? Does this pattern match what you'd expect from their income level or region?
+Does waste_facility_count correlate with waste_emission_tonnes — i.e., do more facilities mean more emissions, or are some facilities much "dirtier" per facility than others?
+
+Tier 6 — Correlation & Statistical Relationships (this is where it gets genuinely analytical)
+
+Calculate the correlation coefficient between gdp_usd and total_emissions_mtco2 across all countries — how strong is it really?
+Does renewable_pct have a statistically meaningful negative correlation with co2_per_capita, or is the relationship weak/noisy?
+Build a simple linear regression: can population, gdp_usd, and renewable_pct together predict total_emissions_mtco2? Which variable has the most predictive power?
+Calculate z-scores for co2_per_capita within each income_level group — which countries are extreme outliers relative to their peers, not just globally? (You've used this exact z-score technique before in your Kenya Climate Risk Monitor project — same logic applies here.)
+
+Tier 7 — Directly Tied to Your Problem Statement
+
+"Apples-to-apples comparison" problem: Try comparing two countries' total_emissions_mtco2 trends side by side — now ask yourself: what's missing from this table that would let you separate "weather drove this" from "policy/behavior drove this"? (Spoiler — see the gap note below.)
+Attribution problem: Using only gdp_usd and total_emissions_mtco2, can you actually distinguish a "cold winter" effect from a "burned more fossil fuels" effect? Try to articulate why or why not using this table alone.
+Blind spot problem: Your problem statement specifically mentions methane from agriculture and N₂O from fertilizer being underrepresented. Look at agriculture_emission_tonnes — is it reported as CO₂-equivalent, raw tonnes, or unclear? What would you need to know about this column's methodology to trust it?
+Reliability audit: Pick 3 countries and manually sanity-check whether their sector emissions (agriculture + power + transportation + buildings + waste) actually sum up to something close to total_emissions_mtco2. If they don't, that's a real data quality finding worth writing up.
+
+Tier 8 — Stretch / "Might Not Be Able to Tackle Yet" (but worth attempting)
+
+Anomaly detection: Apply a percentile-threshold method (top/bottom 5%) on co2_per_capita year-over-year change to flag "unusual" jumps — then investigate if those line up with known events (recessions, COVID, policy changes) via outside research.
+Clustering: Use k-means (unsupervised ML) on co2_per_capita, renewable_pct, gdp_usd, and sector shares to group countries into "climate profiles" rather than relying on income_level as a predefined category — do the clusters match income tiers, or reveal new groupings?
+Forecasting: Build a simple time-series forecast (even just linear trend extrapolation) of total_emissions_mtco2 for one country 5 years forward — then critically assess why this forecast is risky without weather/policy inputs.
+Causal framing exercise (no coding, just thinking): Write out, in plain English, what an actual causal analysis would require that this table doesn't give you (e.g., a control group, weather data, exogenous shocks) — this is the kind of thinking that separates a junior analyst from a senior one.
