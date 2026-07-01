@@ -1,4 +1,5 @@
 -- models/marts/fct_emissions_by_country.sql
+{{ config(materialized='table') }}
 with gcp as (
     select * from {{ ref('stg_gcp_emissions') }}
 ),
